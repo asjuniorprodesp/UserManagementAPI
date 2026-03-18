@@ -1,9 +1,14 @@
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.Extensions.Caching.Memory;
+using UserManagementAPI.Exceptions;
 using UserManagementAPI.Models;
 using UserManagementAPI.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpsRedirection(options =>
 {
     options.HttpsPort = 7133;
@@ -16,6 +21,27 @@ builder.Services.AddSingleton(new UserRepository(connectionString));
 
 var app = builder.Build();
 
+app.UseExceptionHandler(exceptionHandlerApp =>
+{
+    exceptionHandlerApp.Run(async context =>
+    {
+        var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
+        var exception = exceptionFeature?.Error;
+
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/problem+json";
+
+        string detail = app.Environment.IsDevelopment() && exception is not null
+            ? exception.Message
+            : "Ocorreu um erro inesperado ao processar a solicitacao.";
+
+        await context.Response.WriteAsJsonAsync(TypedResults.Problem(
+            title: "Erro interno",
+            detail: detail,
+            statusCode: StatusCodes.Status500InternalServerError));
+    });
+});
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
@@ -23,13 +49,32 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+const string UsersListCacheKey = "users:list";
+const int UsersListCacheSeconds = 30;
+
 // ── Users CRUD ──────────────────────────────────────────────────────────────
 
 // GET /users  – lista todos os usuários
-app.MapGet("/users", async (UserRepository repo) =>
+app.MapGet("/users", async (UserRepository repo, IMemoryCache cache) =>
 {
-    var users = await repo.GetAllAsync();
-    return Results.Ok(users);
+    if (cache.TryGetValue(UsersListCacheKey, out IReadOnlyCollection<User>? cachedUsers) && cachedUsers is not null)
+    {
+        return Results.Ok(cachedUsers);
+    }
+
+    try
+    {
+        var users = (await repo.GetAllAsync()).ToList();
+        cache.Set(UsersListCacheKey, users, TimeSpan.FromSeconds(UsersListCacheSeconds));
+        return Results.Ok(users);
+    }
+    catch (DatabaseOperationException)
+    {
+        return Results.Problem(
+            title: "Falha no banco de dados",
+            detail: "Nao foi possivel recuperar a lista de usuarios.",
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
 })
 .WithName("GetUsers")
 .WithSummary("Retorna a lista de todos os usuários");
@@ -37,53 +82,144 @@ app.MapGet("/users", async (UserRepository repo) =>
 // GET /users/{id}  – retorna um usuário pelo ID
 app.MapGet("/users/{id:int}", async (int id, UserRepository repo) =>
 {
-    var user = await repo.GetByIdAsync(id);
-    return user is not null ? Results.Ok(user) : Results.NotFound($"Usuário com Id {id} não encontrado.");
+    try
+    {
+        var user = await repo.GetByIdAsync(id);
+        return user is not null ? Results.Ok(user) : Results.NotFound($"Usuario com Id {id} nao encontrado.");
+    }
+    catch (DatabaseOperationException)
+    {
+        return Results.Problem(
+            title: "Falha no banco de dados",
+            detail: "Nao foi possivel recuperar o usuario solicitado.",
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
 })
 .WithName("GetUserById")
 .WithSummary("Retorna um usuário pelo ID");
 
 // POST /users  – cria um novo usuário
-app.MapPost("/users", async (CreateUserRequest request, UserRepository repo) =>
+app.MapPost("/users", async (CreateUserRequest request, UserRepository repo, IMemoryCache cache) =>
 {
-    if (string.IsNullOrWhiteSpace(request.FullName) ||
-        string.IsNullOrWhiteSpace(request.Email) ||
-        string.IsNullOrWhiteSpace(request.Department) ||
-        string.IsNullOrWhiteSpace(request.Role))
+    var validationErrors = ValidateRequest(request);
+    if (validationErrors.Count > 0)
     {
-        return Results.BadRequest("FullName, Email, Department e Role são obrigatórios.");
+        return Results.ValidationProblem(validationErrors);
     }
 
-    var created = await repo.CreateAsync(request);
-    return Results.Created($"/users/{created.UserId}", created);
+    try
+    {
+        var created = await repo.CreateAsync(request);
+        cache.Remove(UsersListCacheKey);
+        return Results.Created($"/users/{created.UserId}", created);
+    }
+    catch (DatabaseOperationException)
+    {
+        return Results.Problem(
+            title: "Falha no banco de dados",
+            detail: "Nao foi possivel criar o usuario.",
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
 })
 .WithName("CreateUser")
 .WithSummary("Cria um novo usuário");
 
 // PUT /users/{id}  – atualiza os dados de um usuário
-app.MapPut("/users/{id:int}", async (int id, UpdateUserRequest request, UserRepository repo) =>
+app.MapPut("/users/{id:int}", async (int id, UpdateUserRequest request, UserRepository repo, IMemoryCache cache) =>
 {
-    if (string.IsNullOrWhiteSpace(request.FullName) ||
-        string.IsNullOrWhiteSpace(request.Email) ||
-        string.IsNullOrWhiteSpace(request.Department) ||
-        string.IsNullOrWhiteSpace(request.Role))
+    var validationErrors = ValidateRequest(request);
+    if (validationErrors.Count > 0)
     {
-        return Results.BadRequest("FullName, Email, Department e Role são obrigatórios.");
+        return Results.ValidationProblem(validationErrors);
     }
 
-    var updated = await repo.UpdateAsync(id, request);
-    return updated is not null ? Results.Ok(updated) : Results.NotFound($"Usuário com Id {id} não encontrado.");
+    try
+    {
+        var updated = await repo.UpdateAsync(id, request);
+        if (updated is null)
+        {
+            return Results.NotFound($"Usuario com Id {id} nao encontrado.");
+        }
+
+        cache.Remove(UsersListCacheKey);
+        return Results.Ok(updated);
+    }
+    catch (DatabaseOperationException)
+    {
+        return Results.Problem(
+            title: "Falha no banco de dados",
+            detail: "Nao foi possivel atualizar o usuario.",
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
 })
 .WithName("UpdateUser")
 .WithSummary("Atualiza os dados de um usuário existente");
 
 // DELETE /users/{id}  – remove um usuário
-app.MapDelete("/users/{id:int}", async (int id, UserRepository repo) =>
+app.MapDelete("/users/{id:int}", async (int id, UserRepository repo, IMemoryCache cache) =>
 {
-    var deleted = await repo.DeleteAsync(id);
-    return deleted ? Results.NoContent() : Results.NotFound($"Usuário com Id {id} não encontrado.");
+    try
+    {
+        var deleted = await repo.DeleteAsync(id);
+        if (!deleted)
+        {
+            return Results.NotFound($"Usuario com Id {id} nao encontrado.");
+        }
+
+        cache.Remove(UsersListCacheKey);
+        return Results.NoContent();
+    }
+    catch (DatabaseOperationException)
+    {
+        return Results.Problem(
+            title: "Falha no banco de dados",
+            detail: "Nao foi possivel excluir o usuario.",
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
 })
 .WithName("DeleteUser")
 .WithSummary("Remove um usuário pelo ID");
 
 app.Run();
+
+static Dictionary<string, string[]> ValidateRequest<T>(T request)
+{
+    var context = new ValidationContext(request!);
+    var results = new List<ValidationResult>();
+    Validator.TryValidateObject(request!, context, results, validateAllProperties: true);
+
+    if (request is CreateUserRequest createRequest)
+    {
+        AddWhitespaceValidationErrors(results, createRequest.FullName, nameof(CreateUserRequest.FullName));
+        AddWhitespaceValidationErrors(results, createRequest.Email, nameof(CreateUserRequest.Email));
+        AddWhitespaceValidationErrors(results, createRequest.Department, nameof(CreateUserRequest.Department));
+        AddWhitespaceValidationErrors(results, createRequest.Role, nameof(CreateUserRequest.Role));
+    }
+
+    if (request is UpdateUserRequest updateRequest)
+    {
+        AddWhitespaceValidationErrors(results, updateRequest.FullName, nameof(UpdateUserRequest.FullName));
+        AddWhitespaceValidationErrors(results, updateRequest.Email, nameof(UpdateUserRequest.Email));
+        AddWhitespaceValidationErrors(results, updateRequest.Department, nameof(UpdateUserRequest.Department));
+        AddWhitespaceValidationErrors(results, updateRequest.Role, nameof(UpdateUserRequest.Role));
+    }
+
+    return results
+        .SelectMany(validationResult => validationResult.MemberNames.DefaultIfEmpty(string.Empty),
+            (validationResult, memberName) => new { memberName, validationResult.ErrorMessage })
+        .GroupBy(x => string.IsNullOrWhiteSpace(x.memberName) ? "request" : x.memberName)
+        .ToDictionary(
+            group => group.Key,
+            group => group
+                .Select(x => x.ErrorMessage ?? "Campo invalido.")
+                .Distinct()
+                .ToArray());
+}
+
+static void AddWhitespaceValidationErrors(List<ValidationResult> results, string value, string fieldName)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        results.Add(new ValidationResult($"O campo {fieldName} nao pode ser vazio.", [fieldName]));
+    }
+}

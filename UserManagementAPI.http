@@ -13,6 +13,12 @@ Accept: application/json
 
 ###
 
+### GET /users/{id} – Usuário inexistente (esperado: 404)
+GET {{UserManagementAPI_HostAddress}}/users/99999
+Accept: application/json
+
+###
+
 ### POST /users – Cria um novo usuário
 POST {{UserManagementAPI_HostAddress}}/users
 Content-Type: application/json
@@ -22,6 +28,20 @@ Content-Type: application/json
   "email": "joao.souza@techhive.com",
   "department": "TI",
   "role": "Desenvolvedor Full Stack",
+  "isActive": true
+}
+
+###
+
+### POST /users – Payload inválido (esperado: 400 ValidationProblem)
+POST {{UserManagementAPI_HostAddress}}/users
+Content-Type: application/json
+
+{
+  "fullName": " ",
+  "email": "email-invalido",
+  "department": "T",
+  "role": "",
   "isActive": true
 }
 
@@ -41,8 +61,42 @@ Content-Type: application/json
 
 ###
 
+### PUT /users/{id} – Payload inválido (esperado: 400 ValidationProblem)
+PUT {{UserManagementAPI_HostAddress}}/users/1
+Content-Type: application/json
+
+{
+  "fullName": "",
+  "email": "nao-e-email",
+  "department": "",
+  "role": "",
+  "isActive": true
+}
+
+###
+
+### PUT /users/{id} – Usuário inexistente (esperado: 404)
+PUT {{UserManagementAPI_HostAddress}}/users/99999
+Content-Type: application/json
+
+{
+  "fullName": "Usuario Inexistente",
+  "email": "inexistente@techhive.com",
+  "department": "TI",
+  "role": "Analista",
+  "isActive": true
+}
+
+###
+
 ### DELETE /users/{id} – Remove um usuário pelo ID
-DELETE {{UserManagementAPI_HostAddress}}/users/9
+DELETE {{UserManagementAPI_HostAddress}}/users/10
+Accept: application/json
+
+###
+
+### DELETE /users/{id} – Usuário inexistente (esperado: 404)
+DELETE {{UserManagementAPI_HostAddress}}/users/99999
 Accept: application/json
 
 ###

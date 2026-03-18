@@ -32,6 +32,11 @@ Resposta de sucesso:
 
 - **200 OK**
 
+Observacao de desempenho:
+
+- Esse endpoint usa cache em memoria por 30 segundos para reduzir carga no banco.
+- O cache e invalidado automaticamente em criacao, atualizacao e exclusao de usuario.
+
 Exemplo:
 
 ```json
@@ -57,6 +62,7 @@ Resposta:
 
 - **200 OK** quando encontrado
 - **404 Not Found** quando nao encontrado
+- **500 Internal Server Error** em caso de falha no banco
 
 Mensagem de erro (404):
 
@@ -83,7 +89,8 @@ Body:
 Resposta:
 
 - **201 Created** com o usuario criado
-- **400 Bad Request** se algum campo obrigatorio vier vazio
+- **400 Bad Request** com ValidationProblem para payload invalido
+- **500 Internal Server Error** em caso de falha no banco
 
 Campos obrigatorios:
 
@@ -91,6 +98,13 @@ Campos obrigatorios:
 - `email`
 - `department`
 - `role`
+
+Regras de validacao:
+
+- `fullName`: obrigatorio, 2 a 150 caracteres, nao pode ser somente espacos.
+- `email`: obrigatorio, formato de e-mail valido, maximo de 150 caracteres.
+- `department`: obrigatorio, 2 a 100 caracteres, nao pode ser somente espacos.
+- `role`: obrigatorio, 2 a 100 caracteres, nao pode ser somente espacos.
 
 ### 4. Atualizar usuario
 
@@ -111,8 +125,9 @@ Body:
 Resposta:
 
 - **200 OK** quando atualizado
-- **400 Bad Request** se algum campo obrigatorio vier vazio
+- **400 Bad Request** com ValidationProblem para payload invalido
 - **404 Not Found** quando o usuario nao existir
+- **500 Internal Server Error** em caso de falha no banco
 
 ### 5. Excluir usuario
 
@@ -122,6 +137,22 @@ Resposta:
 
 - **204 No Content** quando removido
 - **404 Not Found** quando o usuario nao existir
+- **500 Internal Server Error** em caso de falha no banco
+
+## Formato de erros
+
+Erros de validacao retornam `ValidationProblem` (status 400), com mensagens por campo.
+
+Falhas internas e de banco retornam `ProblemDetails` (status 500), por exemplo:
+
+```json
+{
+  "type": "about:blank",
+  "title": "Falha no banco de dados",
+  "status": 500,
+  "detail": "Nao foi possivel recuperar a lista de usuarios."
+}
+```
 
 ## Observacoes
 
