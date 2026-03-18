@@ -1,0 +1,48 @@
+@UserManagementAPI_HostAddress = https://localhost:7133
+#http://localhost:5027
+
+### GET /users – Lista todos os usuários
+GET {{UserManagementAPI_HostAddress}}/users
+Accept: application/json
+
+###
+
+### GET /users/{id} – Retorna um usuário específico por ID
+GET {{UserManagementAPI_HostAddress}}/users/1
+Accept: application/json
+
+###
+
+### POST /users – Cria um novo usuário
+POST {{UserManagementAPI_HostAddress}}/users
+Content-Type: application/json
+
+{
+  "fullName": "João Paulo Souza",
+  "email": "joao.souza@techhive.com",
+  "department": "TI",
+  "role": "Desenvolvedor Full Stack",
+  "isActive": true
+}
+
+###
+
+### PUT /users/{id} – Atualiza os dados de um usuário existente
+PUT {{UserManagementAPI_HostAddress}}/users/1
+Content-Type: application/json
+
+{
+  "fullName": "Ana Beatriz Ramos",
+  "email": "ana.ramos@techhive.com",
+  "department": "RH",
+  "role": "Gerente de Recursos Humanos",
+  "isActive": true
+}
+
+###
+
+### DELETE /users/{id} – Remove um usuário pelo ID
+DELETE {{UserManagementAPI_HostAddress}}/users/9
+Accept: application/json
+
+###
