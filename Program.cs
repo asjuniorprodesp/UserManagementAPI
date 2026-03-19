@@ -7,8 +7,20 @@ using UserManagementAPI.Repositories;
 
 var builder = WebApplication.CreateBuilder(args);
 
+const string UserManagementUiCorsPolicy = "UserManagementUI";
+
 builder.Services.AddOpenApi();
 builder.Services.AddMemoryCache();
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(UserManagementUiCorsPolicy, policy =>
+    {
+        policy
+            .WithOrigins("https://localhost:7218", "http://localhost:5254")
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
 builder.Services.AddHttpsRedirection(options =>
 {
     options.HttpsPort = 7133;
@@ -26,6 +38,7 @@ var app = builder.Build();
 app.UseMiddleware<ErrorHandlingMiddleware>();
 
 app.UseHttpsRedirection();
+app.UseCors(UserManagementUiCorsPolicy);
 
 // 2. Autenticacao – valida token antes de qualquer logica de negocio
 app.UseMiddleware<TokenAuthenticationMiddleware>();

@@ -1,0 +1,275 @@
+@page "/users"
+@inject UserApiClient UserApiClient
+@inject IJSRuntime JS
+
+<PageTitle>Users</PageTitle>
+
+<h1>Users</h1>
+
+<p>Gerencie os usuarios cadastrados na API UserManagementAPI.</p>
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="alert @statusCssClass users-status" role="alert">@statusMessage</div>
+}
+
+<div class="users-page-grid">
+    <section class="users-form-card">
+        <h2>@(isEditing ? "Editar usuario" : "Novo usuario")</h2>
+
+        <EditForm Model="formModel" OnValidSubmit="SaveAsync">
+            <DataAnnotationsValidator />
+            <ValidationSummary />
+
+            <div class="users-form-grid">
+                <div class="users-form-full">
+                    <label class="form-label" for="fullName">Nome completo</label>
+                    <InputText id="fullName" class="form-control" @bind-Value="formModel.FullName" />
+                </div>
+
+                <div>
+                    <label class="form-label" for="email">E-mail</label>
+                    <InputText id="email" class="form-control" @bind-Value="formModel.Email" />
+                </div>
+
+                <div>
+                    <label class="form-label" for="department">Departamento</label>
+                    <InputText id="department" class="form-control" @bind-Value="formModel.Department" />
+                </div>
+
+                <div>
+                    <label class="form-label" for="role">Cargo</label>
+                    <InputText id="role" class="form-control" @bind-Value="formModel.Role" />
+                </div>
+
+                <div class="d-flex align-items-center pt-4">
+                    <div class="form-check">
+                        <InputCheckbox id="isActive" class="form-check-input" @bind-Value="formModel.IsActive" />
+                        <label class="form-check-label" for="isActive">Usuario ativo</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="users-page-actions mt-4">
+                <button type="submit" class="btn btn-primary" disabled="@isSubmitting">
+                    @(isSubmitting ? "Salvando..." : isEditing ? "Atualizar" : "Criar")
+                </button>
+                <button type="button" class="btn btn-outline-secondary" @onclick="ResetForm" disabled="@isSubmitting">
+                    Limpar
+                </button>
+                <button type="button" class="btn btn-outline-primary" @onclick="RefreshUsersAsync">
+                    @(isRefreshing ? "Atualizando..." : "Atualizar lista")
+                </button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="users-table-card">
+        <h2>Usuarios cadastrados</h2>
+
+        @if (isLoading)
+        {
+            <p><em>Carregando usuarios...</em></p>
+        }
+        else if (users.Count == 0)
+        {
+            <p>Nenhum usuario encontrado.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Nome</th>
+                            <th>E-mail</th>
+                            <th>Departamento</th>
+                            <th>Cargo</th>
+                            <th>Status</th>
+                            <th>Criado em</th>
+                            <th>Acoes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in users)
+                        {
+                            <tr>
+                                <td>@user.UserId</td>
+                                <td>@user.FullName</td>
+                                <td>@user.Email</td>
+                                <td>@user.Department</td>
+                                <td>@user.Role</td>
+                                <td>@(user.IsActive ? "Ativo" : "Inativo")</td>
+                                <td>@user.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                <td>
+                                    <div class="users-table-actions">
+                                        <button type="button" class="btn btn-sm btn-outline-primary" @onclick="() => StartEditAsync(user)">Editar</button>
+                                        <button type="button" class="btn btn-sm btn-outline-danger" @onclick="() => DeleteAsync(user.UserId)" disabled="@isSubmitting">Excluir</button>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private readonly List<UserDto> users = [];
+    private UserFormModel formModel = new();
+    private bool isLoading = true;
+    private bool isRefreshing;
+    private bool isSubmitting;
+    private bool isEditing;
+    private string? statusMessage;
+    private string statusCssClass = "alert-info";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadUsersAsync();
+    }
+
+    private async Task LoadUsersAsync(bool showRefreshMessage = false, bool isManualRefresh = false)
+    {
+        if (isManualRefresh)
+        {
+            isRefreshing = true;
+        }
+        else
+        {
+            isLoading = true;
+        }
+
+        ClearStatus();
+
+        try
+        {
+            var loadedUsers = await UserApiClient.GetUsersAsync();
+            users.Clear();
+            users.AddRange(loadedUsers.OrderBy(user => user.UserId));
+
+            if (showRefreshMessage)
+            {
+                ShowSuccess("Lista atualizada com sucesso.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            if (isManualRefresh)
+            {
+                isRefreshing = false;
+            }
+            else
+            {
+                isLoading = false;
+            }
+        }
+    }
+
+    private Task RefreshUsersAsync()
+    {
+        return LoadUsersAsync(showRefreshMessage: true, isManualRefresh: true);
+    }
+
+    private async Task SaveAsync()
+    {
+        isSubmitting = true;
+        ClearStatus();
+
+        try
+        {
+            if (isEditing && formModel.UserId.HasValue)
+            {
+                await UserApiClient.UpdateUserAsync(formModel.UserId.Value, formModel.ToRequest());
+                ShowSuccess("Usuario atualizado com sucesso.");
+            }
+            else
+            {
+                await UserApiClient.CreateUserAsync(formModel.ToRequest());
+                ShowSuccess("Usuario criado com sucesso.");
+            }
+
+            ResetForm();
+            await LoadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private async Task StartEditAsync(UserDto user)
+    {
+        formModel = UserFormModel.FromUser(user);
+        isEditing = true;
+        ShowSuccess($"Editando usuario {user.UserId}.");
+        await JS.InvokeVoidAsync("scrollTo", 0, 0);
+    }
+
+    private async Task DeleteAsync(int userId)
+    {
+        var confirmed = await JS.InvokeAsync<bool>("confirm", "Confirma a exclusao deste usuario?");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        isSubmitting = true;
+        ClearStatus();
+
+        try
+        {
+            await UserApiClient.DeleteUserAsync(userId);
+            if (formModel.UserId == userId)
+            {
+                ResetForm();
+            }
+
+            ShowSuccess("Usuario excluido com sucesso.");
+            await LoadUsersAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError(ex.Message);
+        }
+        finally
+        {
+            isSubmitting = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        formModel = new UserFormModel();
+        isEditing = false;
+    }
+
+    private void ShowSuccess(string message)
+    {
+        statusMessage = message;
+        statusCssClass = "alert-success";
+    }
+
+    private void ShowError(string message)
+    {
+        statusMessage = message;
+        statusCssClass = "alert-danger";
+    }
+
+    private void ClearStatus()
+    {
+        statusMessage = null;
+        statusCssClass = "alert-info";
+    }
+}

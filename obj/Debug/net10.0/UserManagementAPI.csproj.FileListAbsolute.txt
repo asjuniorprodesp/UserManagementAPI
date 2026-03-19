@@ -64,3 +64,4 @@ C:\Users\asjunior\OneDrive - Sefaz-SP\Área de Trabalho\Coursera\Back-End Develo
 C:\Users\asjunior\OneDrive - Sefaz-SP\Área de Trabalho\Coursera\Back-End Development with .NET\UserManagementAPI\obj\Debug\net10.0\UserManagementAPI.pdb
 C:\Users\asjunior\OneDrive - Sefaz-SP\Área de Trabalho\Coursera\Back-End Development with .NET\UserManagementAPI\obj\Debug\net10.0\UserManagementAPI.genruntimeconfig.cache
 C:\Users\asjunior\OneDrive - Sefaz-SP\Área de Trabalho\Coursera\Back-End Development with .NET\UserManagementAPI\obj\Debug\net10.0\ref\UserManagementAPI.dll
+C:\Users\asjunior\OneDrive - Sefaz-SP\Área de Trabalho\Coursera\Back-End Development with .NET\UserManagementAPI\obj\Debug\net10.0\UserManagementAPI.sourcelink.json
