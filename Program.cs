@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations;
-using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.Extensions.Caching.Memory;
 using UserManagementAPI.Exceptions;
+using UserManagementAPI.Middleware;
 using UserManagementAPI.Models;
 using UserManagementAPI.Repositories;
 
@@ -21,33 +21,22 @@ builder.Services.AddSingleton(new UserRepository(connectionString));
 
 var app = builder.Build();
 
-app.UseExceptionHandler(exceptionHandlerApp =>
-{
-    exceptionHandlerApp.Run(async context =>
-    {
-        var exceptionFeature = context.Features.Get<IExceptionHandlerFeature>();
-        var exception = exceptionFeature?.Error;
+// ── Pipeline de middleware (ordem exigida) ───────────────────────────────────
+// 1. Tratamento de erros – envolve tudo, captura qualquer excecao nao tratada
+app.UseMiddleware<ErrorHandlingMiddleware>();
 
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        context.Response.ContentType = "application/problem+json";
+app.UseHttpsRedirection();
 
-        string detail = app.Environment.IsDevelopment() && exception is not null
-            ? exception.Message
-            : "Ocorreu um erro inesperado ao processar a solicitacao.";
+// 2. Autenticacao – valida token antes de qualquer logica de negocio
+app.UseMiddleware<TokenAuthenticationMiddleware>();
 
-        await context.Response.WriteAsJsonAsync(TypedResults.Problem(
-            title: "Erro interno",
-            detail: detail,
-            statusCode: StatusCodes.Status500InternalServerError));
-    });
-});
+// 3. Registro de logs – registra metodo, caminho e status de cada requisicao
+app.UseMiddleware<RequestLoggingMiddleware>();
 
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
-
-app.UseHttpsRedirection();
 
 const string UsersListCacheKey = "users:list";
 const int UsersListCacheSeconds = 30;

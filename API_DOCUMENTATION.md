@@ -154,6 +154,46 @@ Falhas internas e de banco retornam `ProblemDetails` (status 500), por exemplo:
 }
 ```
 
+## Middleware
+
+A API possui tres middlewares configurados na seguinte ordem no pipeline:
+
+### 1. ErrorHandlingMiddleware (primeiro)
+
+Captura qualquer excecao nao tratada em toda a aplicacao e retorna:
+
+```json
+{ "error": "Erro interno do servidor." }
+```
+
+### 2. TokenAuthenticationMiddleware (segundo)
+
+Valida o token Bearer enviado no header `Authorization`. Retorna 401 caso ausente ou invalido:
+
+```json
+{ "error": "Nao autorizado. Token invalido ou ausente." }
+```
+
+A rota `/openapi` e isenta de autenticacao no ambiente de desenvolvimento.
+
+### 3. RequestLoggingMiddleware (terceiro)
+
+Registra no log de informacoes o metodo HTTP, caminho e codigo de status de cada requisicao:
+
+```
+[AUDIT] GET /users => 200
+```
+
+## Autenticacao
+
+Todas as requisicoes devem enviar o token no header:
+
+```
+Authorization: Bearer techhive-api-key-2026
+```
+
+O token e configurado em `appsettings.json` na chave `Authentication:Token`.
+
 ## Observacoes
 
 - O banco utilizado e `DB_TechHive` (SQL Server).
